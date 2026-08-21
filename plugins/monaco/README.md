@@ -6,11 +6,6 @@ the editor from VS Code, instead of BB's read-only file preview.
 It applies everywhere BB opens a file: links clicked in chat, the secondary
 panel's file search, and `bb thread open`.
 
-![The Monaco editor in BB's secondary panel, with the file tree open above
-it: a filter box, the project tree expanded to reveal the open
-packages/process-utils/src/index.ts, and the file bar showing that path with
-reload and tree-toggle buttons.](assets/monaco-editor.png)
-
 ## Features
 
 - **Edit and save.** <kbd>⌘S</kbd> writes the file. If it changed on disk
