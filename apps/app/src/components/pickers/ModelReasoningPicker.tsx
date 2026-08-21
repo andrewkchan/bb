@@ -72,6 +72,8 @@ import {
   resolveModelPickerToggle,
   type ModelPickerScope,
 } from "./modelPickerToggle";
+import { useRegisterPaletteActions } from "@/lib/command-palette/palette-registry";
+import { buildComposerPaletteActions } from "@/lib/command-palette/palette-composer-actions";
 import {
   cycleReasoningValue,
   nextCycleValue,
@@ -626,6 +628,34 @@ export function ModelReasoningPicker({
   useAppCommandContext("modelPickerOpen", open && !disabled);
   const ownsCycleChord = (target: EventTarget | null): boolean =>
     ownsModelPickerCycleChord({ open, ...resolveCommandScope(target) });
+  // Every composer mounts a picker, so scope the palette's rows the way the
+  // cycle chords scope themselves: only the one the chord would have moved
+  // contributes, and the target is the element focused before the palette
+  // opened.
+  useRegisterPaletteActions(({ target }) => {
+    if (!ownsCycleChord(target)) return [];
+    return buildComposerPaletteActions({
+      models: {
+        options: [...modelOptions, ...moreModelOptions],
+        selected: modelValue,
+        onSelect: onModelChange,
+      },
+      reasoning: {
+        options: reasoningOptions,
+        selected: reasoningValue,
+        onSelect: (value) => onReasoningChange(value as ReasoningLevel),
+      },
+      ...(canSwitchProviders && onSelectedProviderChange !== undefined
+        ? {
+            providers: {
+              options: providerOptions,
+              selected: selectedProviderId,
+              onSelect: handleProviderSelect,
+            },
+          }
+        : {}),
+    });
+  });
   useAppCommandHandler(
     "modelPicker.toggle",
     ({ target }) => {
