@@ -22,6 +22,7 @@ import {
 } from "@/components/thread/ThreadTitleMentions";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { CommandPalette } from "@/components/commands/CommandPalette";
+import { useNavigationPaletteActions } from "@/components/commands/useNavigationPaletteActions";
 import {
   resolveAutomationBreadcrumbs,
   resolveToolsAreaHeaderMeta,
@@ -539,6 +540,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const titleMentionResources = useSidebarThreadTitleMentionResources(
     sidebarNavigationQuery.data,
   );
+  useNavigationPaletteActions({
+    navigation: sidebarNavigationQuery.data,
+    currentThreadId: threadId,
+  });
   const threadDetailBootstrapQuery = useThreadDetailBootstrap(threadId ?? "", {
     enabled: isThreadView && Boolean(threadId),
     timelinePrefetch: isThreadView && Boolean(threadId),
