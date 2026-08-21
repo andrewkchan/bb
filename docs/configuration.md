@@ -226,6 +226,12 @@ one's shortcut, and offers recently run commands first. The numbered
 accelerator families and the relative cycle commands stay rebindable but
 unlisted.
 
+Beside the commands it lists what the current view offers: a new thread in any
+project, a recent thread by title, the focused composer's models, reasoning
+efforts, and providers by name, and the ways to open the thread's workspace.
+These follow the view, so composer rows come from the focused composer and
+workspace rows from the focused pane.
+
 Settings → Keyboard edits app command shortcuts. Overrides are stored in the
 server database, applied live to every connected window, and kept across
 restarts. Resetting a shortcut removes its override so future bb releases can
