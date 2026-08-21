@@ -117,6 +117,7 @@ import {
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { useRegisterPaletteActions } from "@/lib/command-palette/palette-registry";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import {
   promptInputToDraft,
@@ -2244,6 +2245,33 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     canOpenWorkspace: canOpenPreferredDirectoryTarget,
     environment,
     hasWorkspaceOpenTargets: directoryOpenTargets.length > 0,
+  });
+  // Only the focused pane contributes: each pane mounts this view over its own
+  // workspace, and its rows would otherwise be indistinguishable duplicates.
+  useRegisterPaletteActions(() => {
+    if (!isFocused || !workspaceOpenPath || !preferredDirectoryTarget)
+      return [];
+    return directoryOpenTargets.map((target) => ({
+      id: `workspace-open:${target.id}`,
+      group: "Workspace",
+      title: `Open workspace in ${target.label}`,
+      shortcut: null,
+      run: () => {
+        if (target.id === preferredDirectoryTarget.id) {
+          void openPathInPreferredDirectoryTarget({
+            lineNumber: null,
+            path: workspaceOpenPath,
+          });
+          return;
+        }
+        void openPathInDirectoryTarget({
+          lineNumber: null,
+          path: workspaceOpenPath,
+          rememberTarget: true,
+          targetId: target.id,
+        });
+      },
+    }));
   });
   useAppCommandHandler("workspace.openPreferred", () => {
     if (!isFocused) return false;
