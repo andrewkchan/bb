@@ -16,6 +16,10 @@ import {
   type AppKeybinding,
 } from "@bb/domain";
 import { AppCommandProvider, useAppCommandHandler } from "./AppCommandProvider";
+import {
+  resetPaletteRegistryForTest,
+  useRegisterPaletteActions,
+} from "@/lib/command-palette/palette-registry";
 import { CommandPalette } from "./CommandPalette";
 
 const PALETTE_SHORTCUT = {
@@ -136,6 +140,7 @@ const selectedOption = () =>
 
 afterEach(() => {
   cleanup();
+  resetPaletteRegistryForTest();
   testState.calls.length = 0;
   window.localStorage.clear();
 });
@@ -270,6 +275,53 @@ describe("CommandPalette", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
 
     scrollIntoView.mockRestore();
+  });
+
+  it("lists view-scoped actions beside the app commands and runs them", async () => {
+    function ViewActions() {
+      useRegisterPaletteActions(({ target }) => [
+        {
+          id: "model:sonnet",
+          group: "Model",
+          title: "Sonnet 5",
+          shortcut: null,
+          run: () =>
+            testState.calls.push(
+              `model:${(target as HTMLElement)?.dataset?.testid}`,
+            ),
+        },
+      ]);
+      return null;
+    }
+    render(
+      <MemoryRouter>
+        <AppCommandProvider>
+          <button type="button" data-testid="origin">
+            origin
+          </button>
+          <Handler command="thread.new" />
+          <ViewActions />
+          <CommandPalette />
+        </AppCommandProvider>
+      </MemoryRouter>,
+    );
+    screen.getByTestId("origin").focus();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+    expect(optionTitles()).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("New thread"),
+        expect.stringContaining("Sonnet 5"),
+      ]),
+    );
+
+    fireEvent.change(searchField(), { target: { value: "sonnet" } });
+    await waitFor(() => expect(optionTitles()).toHaveLength(1));
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    // The provider is handed the element focused before the palette opened,
+    // so a pane- or composer-scoped action resolves against the right surface.
+    await waitFor(() => expect(testState.calls).toEqual(["model:origin"]));
   });
 
   it("says so when nothing matches", async () => {

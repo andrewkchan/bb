@@ -31,6 +31,7 @@ import {
   readPaletteRecents,
   recordPaletteRecent,
 } from "@/lib/command-palette/palette-recents";
+import { collectViewPaletteActions } from "@/lib/command-palette/palette-registry";
 
 const PALETTE_PLACEHOLDER = "Search commands";
 
@@ -61,14 +62,15 @@ export function CommandPalette() {
       invocation.target ??
       (typeof document === "undefined" ? null : document.activeElement);
     openTargetRef.current = target;
-    setActions(
-      buildAppCommandActions({
+    setActions([
+      ...buildAppCommandActions({
         target,
         isCommandAvailable: runner.isCommandAvailable,
         dispatch: runner.dispatch,
         shortcuts,
       }),
-    );
+      ...collectViewPaletteActions({ target }),
+    ]);
     setQuery("");
     setHighlightedIndex(0);
     setOpen(true);
