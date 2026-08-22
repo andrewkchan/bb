@@ -276,6 +276,8 @@ export function createPluginCatalogService(deps: {
       sourceGitRef: null,
       sourceGitCommit: null,
       manifestJson: JSON.stringify(BUNDLED_CURATED_MARKETPLACE),
+      // Counts are keyed by entry id, so they survive a manifest fallback.
+      statsJson: existing?.statsJson ?? null,
       etag: null,
       lastModified: null,
       lastSuccessfulRefreshAt: null,
@@ -597,6 +599,8 @@ export function createPluginCatalogService(deps: {
           ...marketplaceSourceColumns(source),
           sourceGitCommit: materialized.commit,
           manifestJson,
+          // Carried through untouched; nothing writes counts yet.
+          statsJson: row.statsJson,
           etag: materialized.etag,
           lastModified: materialized.lastModified,
           lastSuccessfulRefreshAt: attemptedAt,
@@ -1064,6 +1068,9 @@ export function createPluginCatalogService(deps: {
               ...marketplaceSourceColumns(source),
               sourceGitCommit: materialized.commit,
               manifestJson: materialized.manifestJson,
+              // Only the curated marketplace publishes install counts, and it
+              // can never be added here — its name is reserved above.
+              statsJson: null,
               etag: materialized.etag,
               lastModified: materialized.lastModified,
               lastSuccessfulRefreshAt: addedAt,
