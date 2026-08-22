@@ -22,6 +22,13 @@ export const bbDesktopInfoSchema = z.object({
   latestVersion: z.string().min(1).nullable(),
   pendingVersion: z.string().min(1).nullable(),
   platform: z.enum(["macos", "linux"]),
+  /**
+   * Whether this shell can open the server/daemon log viewer right now. False
+   * for an attached runtime (started by an external bb-app, so the desktop has
+   * no log lifecycle to tail) and on platforms without the viewer. Older
+   * desktop shells omit it, which reads the same as false: no log entry point.
+   */
+  serverDaemonLogsAvailable: z.boolean().optional(),
   updateAvailable: z.boolean(),
   updateDownloaded: z.boolean(),
   version: z.string().min(1),
@@ -95,6 +102,14 @@ export interface BbDesktopApi extends BbDesktopInfo {
    * No-op on the web build where `window.bbDesktop` is undefined.
    */
   openExternalUrl(url: string): void;
+  /**
+   * Open (or focus) the native server/daemon log viewer window — the same
+   * window as the Window ▸ Server & Daemon Logs menu item. Main re-checks
+   * `serverDaemonLogsAvailable` itself, so calling this when the viewer is
+   * unavailable is a no-op rather than an error. Optional for version skew
+   * with desktop shells that predate the bridge method.
+   */
+  openServerDaemonLogs?(): Promise<void>;
   /**
    * Push the renderer's theme preference to the Electron main process so the
    * NSWindow appearance — traffic lights and inactive title-bar chrome —
