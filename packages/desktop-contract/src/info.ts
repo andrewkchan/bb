@@ -22,12 +22,7 @@ export const bbDesktopInfoSchema = z.object({
   latestVersion: z.string().min(1).nullable(),
   pendingVersion: z.string().min(1).nullable(),
   platform: z.enum(["macos", "linux"]),
-  /**
-   * Whether this shell can open the server/daemon log viewer right now. False
-   * for an attached runtime (started by an external bb-app, so the desktop has
-   * no log lifecycle to tail) and on platforms without the viewer. Older
-   * desktop shells omit it, which reads the same as false: no log entry point.
-   */
+  /** Whether this shell can open the server/daemon log viewer right now. */
   serverDaemonLogsAvailable: z.boolean().optional(),
   updateAvailable: z.boolean(),
   updateDownloaded: z.boolean(),
@@ -103,11 +98,9 @@ export interface BbDesktopApi extends BbDesktopInfo {
    */
   openExternalUrl(url: string): void;
   /**
-   * Open (or focus) the native server/daemon log viewer window — the same
-   * window as the Window ▸ Server & Daemon Logs menu item. Main re-checks
-   * `serverDaemonLogsAvailable` itself, so calling this when the viewer is
-   * unavailable is a no-op rather than an error. Optional for version skew
-   * with desktop shells that predate the bridge method.
+   * Open or focus the native server/daemon log viewer window. Main re-checks
+   * availability, so this is a no-op when the viewer is unavailable. Optional
+   * for version skew with shells that predate the bridge method.
    */
   openServerDaemonLogs?(): Promise<void>;
   /**

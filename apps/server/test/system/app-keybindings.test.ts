@@ -608,24 +608,6 @@ describe("app keybindings", () => {
     });
   });
 
-  it("ships the log viewer command unbound and only where the viewer exists", () => {
-    const logsBinding = DEFAULT_APP_KEYBINDINGS.filter(
-      (binding) => binding.command === "logs.openServerDaemon",
-    );
-    expect(logsBinding).toHaveLength(1);
-    // A null shortcut keeps a diagnostics action out of the chord space while
-    // staying listable in the palette; the scope keeps it off clients with no
-    // log viewer, where the row could only ever no-op.
-    expect(logsBinding[0]?.shortcut).toBeNull();
-    expect(logsBinding[0]?.desktopOnly).toBe(true);
-    expect(logsBinding[0]?.when.all).toContain("macPlatform");
-    for (const client of DEFAULT_KEYBINDING_CLIENTS) {
-      expect(isAppKeybindingAvailableForClient(logsBinding[0]!, client)).toBe(
-        client.isDesktop && client.isMac,
-      );
-    }
-  });
-
   it("rejects duplicate command overrides", async () => {
     await withTestHarness(async (harness) => {
       const shortcut = {

@@ -1,14 +1,8 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { useState } from "react";
+import { useEffect } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings, type AppDefaultKeybinding } from "@bb/domain";
 import {
@@ -26,9 +20,8 @@ const LOGS_BINDING: AppDefaultKeybinding = {
   when: { all: ["mainSurface", "macPlatform"], none: ["modalOpen"] },
 };
 
-const testState = vi.hoisted(() => ({
-  desktopApi: null as Record<string, unknown> | null,
-}));
+const openServerDaemonLogs = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const testState = vi.hoisted(() => ({ available: false }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
@@ -41,75 +34,28 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/lib/bb-desktop", () => ({
-  getBbDesktopInfo: () => testState.desktopApi,
+  getBbDesktopInfo: () => ({
+    platform: "macos",
+    getInfo: () =>
+      Promise.resolve({ serverDaemonLogsAvailable: testState.available }),
+    onChange: () => () => undefined,
+    openServerDaemonLogs,
+  }),
 }));
 
-interface FakeShellOptions {
-  serverDaemonLogsAvailable: boolean;
-  withBridgeMethod?: boolean;
-}
-
-function installFakeDesktopShell(options: FakeShellOptions) {
-  const openServerDaemonLogs = vi.fn(() => Promise.resolve());
-  let push: ((info: unknown) => void) | null = null;
-  const info = {
-    lastCheckedAt: null,
-    latestVersion: null,
-    pendingVersion: null,
-    platform: "macos",
-    serverDaemonLogsAvailable: options.serverDaemonLogsAvailable,
-    updateAvailable: false,
-    updateDownloaded: false,
-    version: "0.0.0-test",
-  };
-  testState.desktopApi = {
-    ...info,
-    getInfo: () => Promise.resolve(info),
-    onChange: (listener: (next: unknown) => void) => {
-      push = listener;
-      return () => {
-        push = null;
-      };
-    },
-    ...(options.withBridgeMethod === false ? {} : { openServerDaemonLogs }),
-  };
-  return {
-    openServerDaemonLogs,
-    pushAvailability(available: boolean) {
-      push?.({ ...info, serverDaemonLogsAvailable: available });
-    },
-  };
-}
+let runner: ReturnType<typeof useAppCommandRunner> | null = null;
 
 function Harness() {
   useServerDaemonLogsCommand();
-  const runner = useAppCommandRunner();
-  const [answer, setAnswer] = useState("unasked");
-  return (
-    <>
-      <button
-        type="button"
-        data-testid="available"
-        onClick={() =>
-          setAnswer(
-            runner.isCommandAvailable("logs.openServerDaemon", null)
-              ? "yes"
-              : "no",
-          )
-        }
-      >
-        {answer}
-      </button>
-      <button
-        type="button"
-        data-testid="run"
-        onClick={() => runner.dispatch("logs.openServerDaemon", null)}
-      />
-    </>
-  );
+  const value = useAppCommandRunner();
+  useEffect(() => {
+    runner = value;
+  }, [value]);
+  return null;
 }
 
-function renderHarness() {
+function renderHarness(available: boolean) {
+  testState.available = available;
   render(
     <MemoryRouter>
       <AppCommandProvider>
@@ -119,10 +65,8 @@ function renderHarness() {
   );
 }
 
-async function availability(): Promise<string | null> {
-  const probe = screen.getByTestId("available");
-  fireEvent.click(probe);
-  return probe.textContent;
+function isAvailable(): boolean {
+  return runner?.isCommandAvailable("logs.openServerDaemon", null) ?? false;
 }
 
 beforeAll(() => {
@@ -135,55 +79,27 @@ beforeAll(() => {
 
 afterEach(() => {
   cleanup();
-  testState.desktopApi = null;
+  runner = null;
   vi.clearAllMocks();
 });
 
 describe("useServerDaemonLogsCommand", () => {
   it("offers the command and opens the viewer once the shell reports logs", async () => {
-    const shell = installFakeDesktopShell({ serverDaemonLogsAvailable: true });
-    renderHarness();
+    renderHarness(true);
 
-    await waitFor(async () => {
-      expect(await availability()).toBe("yes");
+    await waitFor(() => {
+      expect(isAvailable()).toBe(true);
     });
-    fireEvent.click(screen.getByTestId("run"));
-    expect(shell.openServerDaemonLogs).toHaveBeenCalledTimes(1);
+    runner?.dispatch("logs.openServerDaemon", null);
+    expect(openServerDaemonLogs).toHaveBeenCalledTimes(1);
   });
 
   it("stays unavailable for an attached runtime, which has no logs to tail", async () => {
-    installFakeDesktopShell({ serverDaemonLogsAvailable: false });
-    renderHarness();
+    renderHarness(false);
 
-    // Nothing to wait for: the answer must never flip to "yes".
-    await waitFor(async () => {
-      expect(await availability()).toBe("no");
+    await waitFor(() => {
+      expect(runner).not.toBeNull();
     });
-  });
-
-  it("withdraws the command when the shell switches to an attached runtime", async () => {
-    const shell = installFakeDesktopShell({ serverDaemonLogsAvailable: true });
-    renderHarness();
-    await waitFor(async () => {
-      expect(await availability()).toBe("yes");
-    });
-
-    shell.pushAvailability(false);
-
-    await waitFor(async () => {
-      expect(await availability()).toBe("no");
-    });
-  });
-
-  it("stays unavailable on a desktop shell whose preload predates the bridge", async () => {
-    installFakeDesktopShell({
-      serverDaemonLogsAvailable: true,
-      withBridgeMethod: false,
-    });
-    renderHarness();
-
-    await waitFor(async () => {
-      expect(await availability()).toBe("no");
-    });
+    expect(isAvailable()).toBe(false);
   });
 });

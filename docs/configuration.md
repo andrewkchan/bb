@@ -247,34 +247,33 @@ to on. Set it with
 `bb settings keyboard hints <true|false>`. Turning it off hides the
 delayed shortcut badges without disabling any shortcuts.
 
-| Area      | Command                                   | Default                           | Availability               |
-| --------- | ----------------------------------------- | --------------------------------- | -------------------------- |
-| Palette   | Quick palette                             | `Mod+Shift+P`                     | All clients                |
-| Threads   | New thread                                | `Mod+N` / `Mod+Shift+O`           | Desktop / web              |
-| Threads   | Search threads                            | `Mod+K`                           | All clients                |
-| Threads   | Rename focused thread                     | Unassigned                        | Thread view                |
-| Threads   | Archive focused thread                    | Unassigned                        | Thread view                |
-| Threads   | Previous / next thread                    | Surface defaults above            | Desktop / web              |
-| Threads   | Open visible thread 1–9                   | Platform defaults above           | Web / desktop              |
-| Layout    | Previous / next chat pane                 | Unassigned                        | While split                |
-| Layout    | Focus chat pane 1–8                       | Platform defaults above           | Split (web / desktop)      |
-| Layout    | Maximize / restore chat pane              | `Mod+Shift+E`                     | While split                |
-| Layout    | Close focused chat pane                   | `Mod+Shift+X`                     | While split                |
-| Window    | New window                                | `Mod+Shift+N`                     | Desktop                    |
-| Window    | Settings                                  | `Mod+,`                           | All clients                |
-| Window    | Open server and daemon logs               | Unassigned                        | macOS desktop, own runtime |
-| Layout    | Toggle sidebar                            | `Mod+\`                           | All clients                |
-| Panel     | New tab / close tab / toggle              | `Mod+T` / `Mod+W` / `Mod+J`       | All clients                |
-| Workspace | Quick open file / toggle diff             | `Mod+P` / `Mod+D`                 | All clients                |
-| Workspace | Open terminal                             | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop              |
-| Workspace | Open in preferred app                     | `Mod+O`                           | All clients                |
-| Composer  | Focus composer                            | `Mod+Shift+C`                     | All clients                |
-| Composer  | Toggle model picker                       | `Mod+Shift+M`                     | All clients                |
-| Composer  | Cycle model forward / backward            | `Alt+M` / `Alt+Shift+M`           | All clients                |
-| Composer  | Cycle provider forward / backward         | `Alt+P` / `Alt+Shift+P`           | All clients                |
-| Composer  | Cycle reasoning effort forward / backward | `Alt+T` / `Alt+Shift+T`           | All clients                |
-| Browser   | Focus location / reload / find in page    | `Mod+L` / `Mod+R` / `Mod+F`       | Desktop embedded browser   |
-| Questions | Choose visible answer 1–9                 | `1` … `9`                         | While a question is open   |
+| Area      | Command                                   | Default                           | Availability             |
+| --------- | ----------------------------------------- | --------------------------------- | ------------------------ |
+| Palette   | Quick palette                             | `Mod+Shift+P`                     | All clients              |
+| Threads   | New thread                                | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
+| Threads   | Search threads                            | `Mod+K`                           | All clients              |
+| Threads   | Rename focused thread                     | Unassigned                        | Thread view              |
+| Threads   | Archive focused thread                    | Unassigned                        | Thread view              |
+| Threads   | Previous / next thread                    | Surface defaults above            | Desktop / web            |
+| Threads   | Open visible thread 1–9                   | Platform defaults above           | Web / desktop            |
+| Layout    | Previous / next chat pane                 | Unassigned                        | While split              |
+| Layout    | Focus chat pane 1–8                       | Platform defaults above           | Split (web / desktop)    |
+| Layout    | Maximize / restore chat pane              | `Mod+Shift+E`                     | While split              |
+| Layout    | Close focused chat pane                   | `Mod+Shift+X`                     | While split              |
+| Window    | New window                                | `Mod+Shift+N`                     | Desktop                  |
+| Window    | Settings                                  | `Mod+,`                           | All clients              |
+| Layout    | Toggle sidebar                            | `Mod+\`                           | All clients              |
+| Panel     | New tab / close tab / toggle              | `Mod+T` / `Mod+W` / `Mod+J`       | All clients              |
+| Workspace | Quick open file / toggle diff             | `Mod+P` / `Mod+D`                 | All clients              |
+| Workspace | Open terminal                             | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop            |
+| Workspace | Open in preferred app                     | `Mod+O`                           | All clients              |
+| Composer  | Focus composer                            | `Mod+Shift+C`                     | All clients              |
+| Composer  | Toggle model picker                       | `Mod+Shift+M`                     | All clients              |
+| Composer  | Cycle model forward / backward            | `Alt+M` / `Alt+Shift+M`           | All clients              |
+| Composer  | Cycle provider forward / backward         | `Alt+P` / `Alt+Shift+P`           | All clients              |
+| Composer  | Cycle reasoning effort forward / backward | `Alt+T` / `Alt+Shift+T`           | All clients              |
+| Browser   | Focus location / reload / find in page    | `Mod+L` / `Mod+R` / `Mod+F`       | Desktop embedded browser |
+| Questions | Choose visible answer 1–9                 | `1` … `9`                         | While a question is open |
 
 Cycle commands wrap in both directions. Reasoning cycles only through the
 current model's supported efforts in canonical low-to-high rank order, not the
