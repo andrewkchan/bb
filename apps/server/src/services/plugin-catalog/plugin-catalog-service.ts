@@ -46,6 +46,10 @@ import {
 } from "../plugins/update-resolver.js";
 import { fetchMarketplaceIcons } from "./marketplace-icons.js";
 import {
+  fetchMarketplaceStats,
+  installCountsFromStatsJson,
+} from "./marketplace-stats.js";
+import {
   marketplaceErrorMessage,
   publicMarketplaceFetch,
   type MarketplaceFetch,
@@ -402,6 +406,7 @@ export function createPluginCatalogService(deps: {
     entry: { name: string; pluginId: string; category: string },
     manifest: PluginManifest,
     iconHash: string | null,
+    installs: number | null,
   ): PluginCatalogSearchResult {
     const problem = compatibilityProblem({
       bbRange: manifest.bbEngineRange,
@@ -436,6 +441,10 @@ export function createPluginCatalogService(deps: {
       // Bundled plugins are BB's own; attribute them like the seed entries.
       author: { name: "BB Team", url: "https://getbb.app" },
       installed: getInstalledPlugin(deps.db, entry.pluginId) !== undefined,
+      // Bundled plugins are counted under their own entry id: telemetry sends
+      // a plugin_id for them too, so the curated sidecar names them alongside
+      // the entries it lists.
+      installs,
       compatible: problem === null,
       incompatibleReason: problem,
     };
@@ -487,6 +496,8 @@ export function createPluginCatalogService(deps: {
     row: PluginMarketplaceRow;
     catalog: MarketplaceManifest;
     installedEntryIds: ReadonlySet<string>;
+    /** Null for every third-party listing, which publishes no counts. */
+    installs: number | null;
   }): PluginCatalogSearchResult {
     const { entry, row, catalog } = args;
     const official = row.name === CURATED_MARKETPLACE_NAME;
@@ -514,6 +525,7 @@ export function createPluginCatalogService(deps: {
       installed:
         args.installedEntryIds.has(catalogEntryKey(row.name, entry.id)) ||
         getInstalledPlugin(deps.db, entry.id) !== undefined,
+      installs: args.installs,
       // The listing declares no ranges, so bb cannot judge a marketplace
       // entry until it has fetched the plugin's own manifest.
       compatible: true,
@@ -545,6 +557,36 @@ export function createPluginCatalogService(deps: {
       },
       error: `dropped ${colliding.length} catalog ${colliding.length === 1 ? "entry" : "entries"} whose id matches a bundled plugin: ${ids}`,
     };
+  }
+
+  /**
+   * The install-count sidecar to store for this refresh.
+   *
+   * Only the curated marketplace publishes counts: BB measures them from its
+   * own telemetry, so a number beside a third-party listing would be that
+   * publisher's claim wearing BB's label. A fetch failure keeps the counts
+   * already stored — a cosmetic number must never fail a catalog refresh.
+   */
+  async function refreshedStatsJson(
+    row: PluginMarketplaceRow,
+  ): Promise<string | null> {
+    if (row.name !== CURATED_MARKETPLACE_NAME || row.sourceKind !== "https") {
+      return null;
+    }
+    try {
+      const stats = await fetchMarketplaceStats({
+        manifestUrl: row.manifestUrl,
+        fetch: fetchMarketplace,
+      });
+      // A published-then-withdrawn sidecar clears the counts; a 404 that was
+      // never there to begin with leaves the (already null) column alone.
+      return stats === null ? null : JSON.stringify(stats);
+    } catch (error) {
+      deps.warn?.(
+        `${row.name} install counts were not refreshed: ${marketplaceErrorMessage(error)}`,
+      );
+      return row.statsJson;
+    }
   }
 
   async function performRefresh(
@@ -591,6 +633,7 @@ export function createPluginCatalogService(deps: {
         fetch: fetchMarketplace,
         ...(deps.warn === undefined ? {} : { warn: deps.warn }),
       });
+      const statsJson = await refreshedStatsJson(row);
       // The catalog and all icon rows form one snapshot. Network work happens
       // first, then SQLite publishes the complete snapshot in one commit.
       deps.db.transaction((tx) => {
@@ -599,8 +642,7 @@ export function createPluginCatalogService(deps: {
           ...marketplaceSourceColumns(source),
           sourceGitCommit: materialized.commit,
           manifestJson,
-          // Carried through untouched; nothing writes counts yet.
-          statsJson: row.statsJson,
+          statsJson,
           etag: materialized.etag,
           lastModified: materialized.lastModified,
           lastSuccessfulRefreshAt: attemptedAt,
@@ -1115,6 +1157,16 @@ export function createPluginCatalogService(deps: {
 
     async search(rawQuery) {
       const query = rawQuery.trim().toLowerCase();
+      // Bundled plugins are listed under the curated marketplace, so they read
+      // their counts from that marketplace's sidecar too.
+      const curatedRow = getPluginMarketplace(
+        deps.db,
+        CURATED_MARKETPLACE_NAME,
+      );
+      const curatedInstalls = installCountsFromStatsJson(
+        curatedRow?.statsJson ?? null,
+        (message) => deps.warn?.(message),
+      );
       const bundledEntries = await Promise.all(
         officialPlugins.map(async (entry) => {
           const manifest = await entryManifest(entry);
@@ -1124,7 +1176,12 @@ export function createPluginCatalogService(deps: {
             pluginId: entry.pluginId,
             tags: [] as string[],
             marketplaceRank: 0,
-            result: bundledSearchResult(entry, manifest, icon?.hash ?? null),
+            result: bundledSearchResult(
+              entry,
+              manifest,
+              icon?.hash ?? null,
+              curatedInstalls.get(entry.name) ?? null,
+            ),
           };
         }),
       );
@@ -1147,6 +1204,7 @@ export function createPluginCatalogService(deps: {
       const catalogEntries = orderedMarketplaces().flatMap((row, index) => {
         const catalog = catalogOf(row);
         if (catalog === null) return [];
+        const official = row.name === CURATED_MARKETPLACE_NAME;
         return catalog.plugins.map((entry) => ({
           pluginId: entry.id,
           tags: entry.tags ?? [],
@@ -1156,6 +1214,7 @@ export function createPluginCatalogService(deps: {
             row,
             catalog,
             installedEntryIds,
+            installs: official ? (curatedInstalls.get(entry.id) ?? null) : null,
           }),
         }));
       });
