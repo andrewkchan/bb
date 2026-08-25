@@ -11,7 +11,6 @@
 // when it does not.
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -122,29 +121,31 @@ export const rpcContract = defineRpcContract({
 });
 
 /**
- * Monaco's prebuilt AMD bundle directory.
+ * The directory holding the Monaco bundle this plugin serves.
  *
- * Two layouts, because a builtin plugin ships differently from how it is
- * developed. Packaging copies only `dist/` and `skills/` (see
- * `apps/server/scripts/copy-builtin-plugins.ts`), so `stage-monaco.mjs` puts
- * a copy of `min/vs` at `dist/vs` at build time and that is what a released
- * BB serves. Running from source there is no `dist/`, so fall back to
- * node_modules.
+ * `scripts/stage-assets.mjs` builds it into `dist/monaco`, which is where a
+ * released BB finds it: packaging copies only a builtin's `dist/` and
+ * `skills/` (`apps/server/scripts/copy-builtin-plugins.ts`).
  *
- * The node_modules lookup resolves the package root rather than the file:
- * monaco's `exports` map rewrites every subpath to `./esm/vs/*`, so
- * `require.resolve("monaco-editor/min/vs/loader.js")` fails, while resolving
- * the root under the `require` condition lands on `min/vs/index.js`.
+ * The two candidates are the two layouts this file runs under. Packaged, the
+ * server bundle sits at `dist/server.js` with `dist/monaco` beside it; from
+ * source, `server.ts` sits at the plugin root with `dist/monaco` below it.
  */
-function resolveMonacoVsDir(): string {
-  const staged = path.join(path.dirname(fileURLToPath(import.meta.url)), "vs");
-  if (existsSync(path.join(staged, "loader.js"))) return staged;
-  const require = createRequire(import.meta.url);
-  return path.dirname(require.resolve("monaco-editor"));
+function resolveMonacoBundleDir(): string {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  for (const candidate of [
+    path.join(moduleDir, "monaco"),
+    path.join(moduleDir, "dist", "monaco"),
+  ]) {
+    if (existsSync(path.join(candidate, "editor.js"))) return candidate;
+  }
+  throw new Error(
+    "the Monaco bundle is missing; run `pnpm --filter bb-plugin-monaco build:monaco`",
+  );
 }
 
 export default async function plugin(bb: BbPluginApi) {
-  const vsDir = resolveMonacoVsDir();
+  const bundleDir = resolveMonacoBundleDir();
 
   let assetLease: { baseUrl: string; expiresAtMs: number } | null = null;
 
@@ -160,9 +161,9 @@ export default async function plugin(bb: BbPluginApi) {
       assetLease === null ||
       assetLease.expiresAtMs - now < ASSET_LEASE_REFRESH_MARGIN_MS
     ) {
-      // No hostId: Monaco lives in this plugin's node_modules, on the server.
+      // No hostId: the bundle is part of the plugin, on the server.
       assetLease = await bb.sdk.files.createPreview({
-        rootPath: vsDir,
+        rootPath: bundleDir,
         ttlMs: ASSET_LEASE_TTL_MS,
       });
     }
@@ -344,5 +345,5 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
 
-  bb.log.info(`serving Monaco from ${vsDir}`);
+  bb.log.info(`serving Monaco from ${bundleDir}`);
 }

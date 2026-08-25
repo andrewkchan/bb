@@ -38,8 +38,16 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   svelte: "html",
 
   // Data and config
-  json: "json",
-  jsonc: "json",
+  // JSON is highlighted as JavaScript on purpose. Monaco has no
+  // basic-language for JSON — its JSON support is a full language service,
+  // and pulling that in costs ~1.6 MB (bundle, stylesheet, and its own
+  // worker) for what is, without a schema, highlighting we already have:
+  // JSON is a subset of JavaScript's object syntax, so strings, numbers,
+  // keywords, and brackets all tokenize correctly, and `jsonc` comments do
+  // too. If JSON schema validation is ever wanted, that is the point to
+  // reconsider — `monaco-bundle/editor.js` is where it would go.
+  json: "javascript",
+  jsonc: "javascript",
   yaml: "yaml",
   yml: "yaml",
   toml: "ini",

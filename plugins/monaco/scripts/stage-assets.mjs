@@ -1,35 +1,72 @@
 /**
- * Copies Monaco's prebuilt AMD bundle into `dist/vs`.
+ * Builds the Monaco bundle this plugin serves, into `dist/monaco`.
  *
- * Packaging ships only a builtin plugin's `dist/` and `skills/` directories
- * (`apps/server/scripts/copy-builtin-plugins.ts`), so anything the plugin
- * needs on disk at runtime has to be inside `dist/`. The server serves this
- * directory over a `files.createPreview` URL and the frontend loads Monaco
- * from it; without the copy, a released BB has no Monaco to serve.
+ * Monaco cannot go through `bb plugin build` with everything else: that
+ * config emits one file with no code splitting, so Monaco would parse at app
+ * boot for every user — including everyone who never opens a file — and its
+ * worker could not be emitted at all. Building it here instead keeps it
+ * lazy: `lib/monaco-loader.ts` imports these files from a
+ * `files.createPreview` URL the first time a file tab opens.
  *
- * Run after `build-official-plugins.mjs`, which clears `dist/` first.
+ * Building rather than copying Monaco's prebuilt AMD bundle is what keeps
+ * this small. esbuild proves which modules are reachable from the entry, so
+ * the language services this plugin does not use are dropped by construction
+ * — 3.3 MB against 24 MB for the AMD tree — with no risk that something we
+ * pruned is requested later at runtime.
+ *
+ * Packaging ships only a builtin's `dist/` and `skills/`
+ * (`apps/server/scripts/copy-builtin-plugins.ts`, which runs this), so
+ * `dist/` is the only place these files can live.
  */
-import { cp, mkdir, stat } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
 const pluginRoot = path.resolve(import.meta.dirname, "..");
 const require = createRequire(path.join(pluginRoot, "package.json"));
+const esbuild = require("esbuild");
 
-// `exports` rewrites every subpath to ./esm/vs/*, so resolve the package root
-// (whose `require` condition is min/vs/index.js) and take its directory.
-const sourceDir = path.dirname(require.resolve("monaco-editor"));
-const targetDir = path.join(pluginRoot, "dist", "vs");
+const outDir = path.join(pluginRoot, "dist", "monaco");
+await rm(outDir, { recursive: true, force: true });
+await mkdir(outDir, { recursive: true });
 
-const loader = path.join(sourceDir, "loader.js");
-try {
-  await stat(loader);
-} catch {
+const shared = {
+  bundle: true,
+  format: "esm",
+  platform: "browser",
+  target: "es2022",
+  minify: true,
+  legalComments: "none",
+  absWorkingDir: pluginRoot,
+};
+
+// Two entries, not one: the worker runs in its own global scope and must be
+// a separate file for `new Worker(url)`.
+const editor = await esbuild.build({
+  ...shared,
+  entryPoints: [path.join(pluginRoot, "monaco-bundle", "editor.js")],
+  outfile: path.join(outDir, "editor.js"),
+  metafile: true,
+});
+await esbuild.build({
+  ...shared,
+  entryPoints: [path.join(pluginRoot, "monaco-bundle", "worker.js")],
+  outfile: path.join(outDir, "editor.worker.js"),
+});
+
+// A silently language-less bundle would still load and still edit — it would
+// just render every file as plain text — so fail the build instead.
+const inputs = Object.keys(editor.metafile.inputs);
+if (!inputs.some((input) => input.includes("basic-languages"))) {
   throw new Error(
-    `monaco-editor's AMD build is missing (${loader}); run npm/pnpm install first`,
+    "the Monaco bundle contains no basic-languages grammars; syntax highlighting would be missing",
   );
 }
 
-await mkdir(path.dirname(targetDir), { recursive: true });
-await cp(sourceDir, targetDir, { recursive: true });
-console.log(`monaco: staged ${sourceDir} -> ${targetDir}`);
+const total = Object.values(editor.metafile.outputs).reduce(
+  (bytes, output) => bytes + output.bytes,
+  0,
+);
+console.log(
+  `monaco: built ${outDir} (${(total / 1024 / 1024).toFixed(2)} MB editor + worker)`,
+);

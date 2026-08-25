@@ -34,12 +34,23 @@ Ships with BB as a builtin; there is nothing to install.
 pnpm exec turbo run typecheck test --filter=bb-plugin-monaco
 ```
 
-Monaco's AMD build is what the editor loads at runtime, and packaging copies
-only a builtin's `dist/`, so `scripts/stage-assets.mjs` copies
-`monaco-editor/min/vs` into `dist/vs` during the build
-(`apps/server/scripts/copy-builtin-plugins.ts` runs it). Running from source
-there is no `dist/`, and the server falls back to resolving `monaco-editor`
-from `node_modules`.
+`scripts/stage-assets.mjs` builds the Monaco bundle the editor loads, into
+`dist/monaco` — packaging copies only a builtin's `dist/`, and
+`apps/server/scripts/copy-builtin-plugins.ts` runs the script. Build it
+directly with `pnpm --filter bb-plugin-monaco build:monaco`.
+
+Monaco is built rather than bundled into `app.js` because `bb plugin build`
+emits one file with no code splitting: Monaco would parse at app boot for
+everyone, including users who never open a file, and its worker could not be
+emitted at all. `lib/monaco-loader.ts` loads the built files from a
+`files.createPreview` URL the first time a file tab opens.
+
+`monaco-bundle/editor.js` is the entry, and it is deliberately narrow: the
+editor plus `basic-languages` (the Monarch grammars), without the CSS, HTML,
+JSON, and TypeScript *language services* this plugin does not use. esbuild
+proves what is reachable from it, so the result is 3.3 MB rather than the
+24 MB of Monaco's prebuilt tree, with no risk that something pruned is
+requested later at runtime.
 
 ## Which files it opens
 

@@ -1,45 +1,21 @@
 import type * as MonacoNs from "monaco-editor";
 
 /**
- * Loads Monaco's prebuilt AMD bundle from a URL at runtime.
+ * Loads the Monaco bundle this plugin builds for itself, from a URL, the
+ * first time a file tab opens.
  *
- * Monaco is deliberately NOT bundled into app.js. `bb plugin build` runs one
- * fixed esbuild config — single entry, single outfile, no code splitting and
- * no loader map — which means the ESM build fails outright (its stylesheet
- * pulls in codicon.ttf, and no loader is configured for `.ttf`), and even
- * patched around it, a dynamic import cannot split, so all ~4.4 MB would
- * parse at app boot for every user with the plugin enabled. Loading the AMD
- * build from a URL keeps our bundle at a few KB, defers every byte of Monaco
- * until a file tab actually opens, and gets the stylesheet, fonts, workers,
- * and on-demand language definitions working exactly as Microsoft ships them.
+ * Not bundled into app.js: `bb plugin build` emits one file with no code
+ * splitting, so Monaco would parse at app boot for every user — including
+ * everyone who never opens a file — and its worker could not be emitted at
+ * all. Loading it from a URL keeps the plugin bundle at a few KB and defers
+ * every byte of Monaco until it is needed.
  *
- * The URL comes from `bb.sdk.files.createPreview` over `monaco-editor/min/vs`
- * (see server.ts) — same origin as the app, so workers are not cross-origin.
- *
- * Caveat worth knowing: Monaco's README marks the AMD build deprecated. It
- * ships in 0.56 and works; if it is ever dropped, the replacement is to serve
- * a self-built ESM bundle from the same preview URL, which changes this file
- * and nothing else.
+ * The bundle is built by `scripts/stage-assets.mjs` into `dist/monaco` and
+ * served by `bb.sdk.files.createPreview` (see server.ts) — same origin as the
+ * app, so the worker is not cross-origin.
  */
 
-type AmdRequire = {
-  (modules: string[], onLoad: () => void, onError: (error: unknown) => void): void;
-  config(options: { paths: Record<string, string> }): void;
-};
-
-type MonacoGlobals = {
-  require?: AmdRequire;
-  define?: unknown;
-  monaco?: typeof MonacoNs;
-  MonacoEnvironment?: unknown;
-};
-
-/**
- * One load per app window, shared by every open editor tab. Keyed by nothing:
- * the asset URL can change when a lease is re-issued, but the loader is
- * already configured by then and Monaco is in memory, so re-booting it would
- * be wasteful and would re-register its global `define`.
- */
+/** One load per app window, shared by every open editor tab. */
 let bootPromise: Promise<typeof MonacoNs> | null = null;
 
 export function loadMonaco(baseUrl: string): Promise<typeof MonacoNs> {
@@ -47,121 +23,46 @@ export function loadMonaco(baseUrl: string): Promise<typeof MonacoNs> {
   return bootPromise;
 }
 
+interface MonacoModule {
+  monaco?: typeof MonacoNs;
+}
+
 async function boot(baseUrl: string): Promise<typeof MonacoNs> {
-  // Monaco's loader installs `require`/`define`/`monaco` as page globals;
-  // TypeScript's view of globalThis knows nothing about them.
-  const globals = globalThis as unknown as MonacoGlobals;
+  // Monaco styles its widgets from a stylesheet esbuild emits beside the
+  // bundle; without it the editor mounts and paints nothing.
+  await injectStylesheet(`${baseUrl}/editor.css`);
 
-  await injectScript(`${baseUrl}/loader.js`);
-  const amdRequire = globals.require;
-  if (!amdRequire) {
-    throw new Error("Monaco's AMD loader did not install itself");
-  }
-  amdRequire.config({ paths: { vs: baseUrl } });
+  // Workers are same-origin, so a plain module worker is enough — no blob
+  // trampoline. Set before the editor loads: Monaco reads this when it first
+  // needs a worker, which can be during the first `create`.
+  (globalThis as { MonacoEnvironment?: unknown }).MonacoEnvironment = {
+    getWorker: () =>
+      new Worker(new URL(`${baseUrl}/editor.worker.js`, window.location.origin), {
+        type: "module",
+      }),
+  };
 
-  // Deliberately NOT setting MonacoEnvironment: Monaco 0.56's AMD build
-  // assigns `self.MonacoEnvironment` itself during `editor.main`, with a
-  // getWorker that builds blob workers from its own bundled worker assets.
-  // Anything set here is overwritten by it.
-  await new Promise<void>((resolve, reject) => {
-    amdRequire(
-      ["vs/editor/editor.main"],
-      () => resolve(),
-      (error) =>
-        reject(error instanceof Error ? error : new Error(String(error))),
-    );
-  });
-
-  const monaco = globals.monaco;
+  // The URL is a runtime value, so the plugin's own bundler leaves this
+  // import alone rather than trying to inline the module.
+  const loaded: MonacoModule = await import(
+    /* @vite-ignore */ `${baseUrl}/editor.js`
+  );
+  const monaco = loaded.monaco;
   if (!monaco) {
-    throw new Error("Monaco loaded but did not expose its API");
+    throw new Error("the Monaco bundle did not expose its API");
   }
-  configureDiagnostics(monaco);
   return monaco;
 }
 
-/**
- * Turns off type checking, leaving syntax checking on.
- *
- * `monaco-editor` bundles the whole TypeScript compiler (its `ts.worker` is
- * ~7 MB) and `editor.main` wires it up by default, so opening a `.ts` file
- * silently starts a type checker in a web worker. Nothing in BB asks for
- * this and BB has no LSP — it is Monaco's own batteries.
- *
- * That checker has no file system. It sees exactly one file: the open model.
- * Every import therefore fails to resolve, and the editor fills with
- * "Cannot find module" on imports that are perfectly correct on disk. The
- * diagnostics are not just noisy, they are wrong.
- *
- * Syntax diagnostics stay on: an unbalanced brace is a real error in a
- * single file, and reporting it needs no project graph. If BB ever grows
- * real language-server support, semantic checking belongs there — with the
- * whole project behind it — not in this worker.
- */
-interface DiagnosticsDefaults {
-  setDiagnosticsOptions(options: {
-    noSemanticValidation: boolean;
-    noSyntaxValidation: boolean;
-    noSuggestionDiagnostics: boolean;
-  }): void;
-}
-
-interface TypescriptNamespace {
-  typescriptDefaults?: unknown;
-  javascriptDefaults?: unknown;
-}
-
-function isDiagnosticsDefaults(value: unknown): value is DiagnosticsDefaults {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { setDiagnosticsOptions?: unknown })
-      .setDiagnosticsOptions === "function"
-  );
-}
-
-/**
- * Monaco 0.56 deprecated `languages.typescript` in favour of a top-level
- * `typescript` namespace, but the AMD build still installs the working
- * implementation on `languages` and types the deprecated path as an inert
- * `{ deprecated: true }` stub. The declarations and the runtime disagree, so
- * probe both and narrow what comes back.
- */
-function typescriptNamespaceOf(monaco: typeof MonacoNs): TypescriptNamespace[] {
-  const candidates: unknown[] = [
-    (monaco as { typescript?: unknown }).typescript,
-    (monaco.languages as { typescript?: unknown } | undefined)?.typescript,
-  ];
-  return candidates.filter(
-    (candidate): candidate is TypescriptNamespace =>
-      typeof candidate === "object" && candidate !== null,
-  );
-}
-
-function configureDiagnostics(monaco: typeof MonacoNs): void {
-  let configured = 0;
-  for (const namespace of typescriptNamespaceOf(monaco)) {
-    for (const defaults of [
-      namespace.typescriptDefaults,
-      namespace.javascriptDefaults,
-    ]) {
-      if (!isDiagnosticsDefaults(defaults)) continue;
-      defaults.setDiagnosticsOptions({
-        noSemanticValidation: true,
-        noSyntaxValidation: false,
-        noSuggestionDiagnostics: true,
-      });
-      configured += 1;
-    }
-  }
-  if (configured === 0) {
-    // Not fatal, but the editor will fill with false "Cannot find module"
-    // errors, and the cause would otherwise be invisible.
-    console.warn(
-      "[monaco] could not disable semantic diagnostics: Monaco's typescript" +
-        " defaults were not found at either the current or deprecated path",
-    );
-  }
+function injectStylesheet(href: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    link.onload = () => resolve();
+    link.onerror = () => reject(new Error(`Failed to load ${href}`));
+    document.head.appendChild(link);
+  });
 }
 
 const OVERFLOW_NODE_ID = "bb-plugin-monaco-overflow-widgets";
@@ -208,15 +109,4 @@ export function overflowWidgetsNode(): HTMLElement {
 export function setOverflowWidgetsTheme(theme: "vs" | "vs-dark"): void {
   const node = document.getElementById(OVERFLOW_NODE_ID);
   if (node !== null) node.className = `monaco-editor ${theme}`;
-}
-
-function injectScript(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = src;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.head.appendChild(script);
-  });
 }
