@@ -229,7 +229,7 @@ describe("builtin plugin reconciliation", () => {
       ["plugin-api-tester", "Beaker"],
       ["inline-vis", "AppWindow"],
       ["keep-awake", "Coffee"],
-      ["monaco", "Code"],
+      ["monaco-editor", "Code"],
       ["pdf-preview", "FileText"],
       ["provider-acp", "./icons/acp.svg"],
       ["provider-claude-code", "./icons/claude-code.svg"],

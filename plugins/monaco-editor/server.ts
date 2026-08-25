@@ -1,4 +1,4 @@
-// bb-plugin-monaco — backend entry.
+// bb-plugin-monaco-editor — backend entry.
 //
 // Three jobs, all in service of the `fileOpener` slot in app.tsx:
 //   1. `assets`  — hand the frontend a URL it can load Monaco's AMD build from.
@@ -194,7 +194,7 @@ async function ensureMonacoBundleDir(
   );
   if (staged === undefined) {
     throw new Error(
-      "could not build the Monaco bundle; run `pnpm --filter bb-plugin-monaco build:monaco`",
+      "could not build the Monaco bundle; run `pnpm --filter bb-plugin-monaco-editor build:monaco`",
     );
   }
   return staged;

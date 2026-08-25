@@ -79,8 +79,8 @@ export const BUILTIN_PLUGINS = [
     category: "Interface",
   },
   {
-    name: "monaco",
-    pluginId: "monaco",
+    name: "monaco-editor",
+    pluginId: "monaco-editor",
     defaultEnabled: true,
     category: "Interface",
   },

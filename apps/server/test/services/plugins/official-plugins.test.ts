@@ -100,7 +100,7 @@ describe("official plugin registry invariants", () => {
       "inline-vis": "Interface",
       "keep-awake": "Host access",
       memory: "Context & knowledge",
-      monaco: "Interface",
+      "monaco-editor": "Interface",
       "pdf-preview": "Interface",
       "provider-acp": "Agent interaction",
       "provider-claude-code": "Agent interaction",

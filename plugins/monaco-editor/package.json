@@ -1,5 +1,5 @@
 {
-  "name": "bb-plugin-monaco",
+  "name": "bb-plugin-monaco-editor",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -27,7 +27,7 @@
     "bbPluginSdk": ">=0.4.9"
   },
   "bb": {
-    "name": "Monaco",
+    "name": "Monaco editor",
     "description": "Edit files in BB with the Monaco editor instead of the read-only preview.",
     "branding": {
       "icon": "Code"

@@ -1,4 +1,4 @@
-// bb-plugin-monaco — frontend entry.
+// bb-plugin-monaco-editor — frontend entry.
 //
 // Registers a `fileOpener`, which is BB's seam for replacing the built-in
 // file preview. Every file-open flow in the app funnels through one call site

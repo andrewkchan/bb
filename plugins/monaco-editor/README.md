@@ -1,4 +1,4 @@
-# bb-plugin-monaco
+# bb-plugin-monaco-editor
 
 Opens files in BB using [Monaco](https://microsoft.github.io/monaco-editor/),
 the editor from VS Code, instead of BB's read-only file preview.
@@ -31,7 +31,7 @@ panel's file search, and `bb thread open`.
 Ships with BB as a builtin; there is nothing to install.
 
 ```
-pnpm exec turbo run typecheck test --filter=bb-plugin-monaco
+pnpm exec turbo run typecheck test --filter=bb-plugin-monaco-editor
 ```
 
 `scripts/stage-assets.mjs` builds the Monaco bundle the editor loads, into
@@ -40,7 +40,7 @@ since only a builtin's `dist/` ships. A source checkout never runs that path —
 the dev server loads builtins straight from `plugins/<name>` — so the plugin
 builds the bundle itself when it is missing or older than `monaco-bundle/`,
 which makes that one file open a few seconds slow.
-`pnpm --filter bb-plugin-monaco build:monaco` does it up front.
+`pnpm --filter bb-plugin-monaco-editor build:monaco` does it up front.
 
 The dev loop already rebuilds `dist/app.js` and reloads `server.ts` on save,
 so editing `app.tsx`, `components/`, `lib/`, or `server.ts` needs nothing

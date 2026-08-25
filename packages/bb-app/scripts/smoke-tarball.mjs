@@ -33,7 +33,7 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
   "custom-instructions",
   "inline-vis",
   "keep-awake",
-  "monaco",
+  "monaco-editor",
   "pdf-preview",
   "provider-retry",
   "secrets",

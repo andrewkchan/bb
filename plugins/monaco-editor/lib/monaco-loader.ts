@@ -65,7 +65,7 @@ function injectStylesheet(href: string): Promise<void> {
   });
 }
 
-const OVERFLOW_NODE_ID = "bb-plugin-monaco-overflow-widgets";
+const OVERFLOW_NODE_ID = "bb-plugin-monaco-editor-overflow-widgets";
 
 /**
  * A body-level host for Monaco's "overflow widgets" — hovers, the suggest
