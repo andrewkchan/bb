@@ -51,8 +51,55 @@ async function boot(baseUrl: string): Promise<typeof MonacoNs> {
   if (!monaco) {
     throw new Error("the Monaco bundle did not expose its API");
   }
+  registerOccurrenceHighlighting(monaco);
   return monaco;
 }
+
+/**
+ * Highlights every occurrence of the identifier under the cursor.
+ *
+ * Monaco's word-highlight contribution ships in the bundle but does nothing
+ * on its own: it renders whatever a `DocumentHighlightProvider` reports, and
+ * the only provider that would register one is a language service. Monaco has
+ * a textual provider of its own (`textualHighlightProvider.js`) but never
+ * wires it into the standalone editor, and it takes internal services a
+ * plugin cannot reach — so supply one through the public API instead.
+ *
+ * Textual by design: matches are whole-word and case-sensitive, with no
+ * notion of whether two spellings mean the same symbol. That is what makes it
+ * useful without a language server, and it costs nothing to ship.
+ */
+function registerOccurrenceHighlighting(monaco: typeof MonacoNs): void {
+  const languageIds = monaco.languages.getLanguages().map((entry) => entry.id);
+  monaco.languages.registerDocumentHighlightProvider(languageIds, {
+    provideDocumentHighlights(model, position) {
+      const word = model.getWordAtPosition(position);
+      if (word === null) return [];
+      return model
+        .findMatches(
+          word.word,
+          false,
+          false,
+          true,
+          // Non-null word separators make this whole-word, so `set` does not
+          // light up every `offset` in the file.
+          USUAL_WORD_SEPARATORS,
+          false,
+          MAX_OCCURRENCE_MATCHES,
+        )
+        .map((match) => ({
+          range: match.range,
+          kind: monaco.languages.DocumentHighlightKind.Text,
+        }));
+    },
+  });
+}
+
+/** Monaco's own default; repeated because the constant is not exported. */
+const USUAL_WORD_SEPARATORS = "`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?";
+
+/** A ceiling so a hot loop over a huge file cannot stall the editor. */
+const MAX_OCCURRENCE_MATCHES = 1000;
 
 function injectStylesheet(href: string): Promise<void> {
   return new Promise((resolve, reject) => {
