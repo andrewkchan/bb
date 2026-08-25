@@ -10,7 +10,7 @@
 // confinement plus the compare-and-swap guard are the reason to use it even
 // when it does not.
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -121,6 +121,35 @@ export const rpcContract = defineRpcContract({
 });
 
 /**
+ * Whether a built bundle predates what it was built from.
+ *
+ * The dev loop rebuilds `dist/app.js` and reloads `server.ts` on save, but
+ * knows nothing about this bundle, so without this an edit to
+ * `monaco-bundle/` or a bumped `monaco-editor` would leave a stale bundle in
+ * place and the change would silently not appear.
+ *
+ * Only meaningful in a source checkout. A packaged plugin has no
+ * `monaco-bundle/` beside it — nothing to be newer than the artifact — so
+ * this returns false there without stat-ing anything that matters.
+ */
+function isBundleStale(moduleDir: string, bundleDir: string): boolean {
+  const builtAtMs = statSync(path.join(bundleDir, "editor.js")).mtimeMs;
+  const entryDir = path.join(moduleDir, "monaco-bundle");
+  if (!existsSync(entryDir)) return false;
+
+  const inputs = [
+    path.join(moduleDir, "scripts", "stage-assets.mjs"),
+    ...readdirSync(entryDir).map((name) => path.join(entryDir, name)),
+    // A `monaco-editor` bump changes nothing this plugin owns, so compare
+    // against the installed package itself.
+    path.join(moduleDir, "package.json"),
+  ];
+  return inputs.some(
+    (input) => existsSync(input) && statSync(input).mtimeMs > builtAtMs,
+  );
+}
+
+/**
  * The directory holding the Monaco bundle this plugin serves, building it
  * first if it is not there.
  *
@@ -146,10 +175,14 @@ async function ensureMonacoBundleDir(
   const built = candidates.find((candidate) =>
     existsSync(path.join(candidate, "editor.js")),
   );
-  if (built !== undefined) return built;
+  if (built !== undefined && !isBundleStale(moduleDir, built)) return built;
 
-  // Building takes a few seconds, so say why the first file open is slow.
-  log("Monaco bundle missing; building it (first run in a source checkout)");
+  // Building takes a few seconds, so say why this file open is slow.
+  log(
+    built === undefined
+      ? "Monaco bundle missing; building it (first run in a source checkout)"
+      : "Monaco bundle is older than its sources; rebuilding it",
+  );
   // A computed specifier, so the plugin's own bundler leaves it alone rather
   // than trying to inline a build script into the server bundle. Importing it
   // runs it — the same contract packaging relies on.

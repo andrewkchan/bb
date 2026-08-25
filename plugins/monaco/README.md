@@ -38,9 +38,14 @@ pnpm exec turbo run typecheck test --filter=bb-plugin-monaco
 `dist/monaco`. Packaging runs it (`apps/server/scripts/copy-builtin-plugins.ts`),
 since only a builtin's `dist/` ships. A source checkout never runs that path —
 the dev server loads builtins straight from `plugins/<name>` — so the plugin
-builds the bundle itself the first time a file is opened, which makes that one
-open a few seconds slow. `pnpm --filter bb-plugin-monaco build:monaco` does it
-up front.
+builds the bundle itself when it is missing or older than `monaco-bundle/`,
+which makes that one file open a few seconds slow.
+`pnpm --filter bb-plugin-monaco build:monaco` does it up front.
+
+The dev loop already rebuilds `dist/app.js` and reloads `server.ts` on save,
+so editing `app.tsx`, `components/`, `lib/`, or `server.ts` needs nothing
+extra. It knows nothing about the Monaco bundle, which is why the staleness
+check exists: edit `monaco-bundle/` and the next file open rebuilds.
 
 Monaco is built rather than bundled into `app.js` because `bb plugin build`
 emits one file with no code splitting: Monaco would parse at app boot for
