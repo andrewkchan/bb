@@ -53,12 +53,17 @@ everyone, including users who never open a file, and its worker could not be
 emitted at all. `lib/monaco-loader.ts` loads the built files from a
 `files.createPreview` URL the first time a file tab opens.
 
-`monaco-bundle/editor.js` is the entry, and it is deliberately narrow: the
-editor plus `basic-languages` (the Monarch grammars), without the CSS, HTML,
-JSON, and TypeScript *language services* this plugin does not use. esbuild
-proves what is reachable from it, so the result is 3.3 MB rather than the
-24 MB of Monaco's prebuilt tree, with no risk that something pruned is
-requested later at runtime.
+`monaco-bundle/editor.js` is the entry: Monaco's own `editor.main`, which is
+the API plus its contribution modules (find, folding, word navigation,
+sorting, …) and every Monarch grammar. What it leaves out is the language
+*services* for CSS, HTML, JSON, and TypeScript — completion and type checking
+this plugin has no use for. esbuild proves what is reachable, so the result is
+4.6 MB rather than the 24 MB of Monaco's prebuilt tree.
+
+Do not trim that entry to `editor.api` to save the difference. The API without
+the contributions still opens files and still types, so the editor looks fine
+while find, word navigation, and folding silently do not exist. The build
+script asserts each of those is present for that reason.
 
 ## Which files it opens
 

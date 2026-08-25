@@ -1,17 +1,18 @@
 /**
- * The Monaco we actually ship.
+ * The Monaco we ship.
  *
- * Importing `monaco-editor` whole pulls in the CSS, HTML, JSON, and
- * TypeScript *language services* — the pieces that do completion and type
- * checking. This plugin has no language server and deliberately does no type
- * checking (Monaco's checker sees only the open file, so its "cannot find
- * module" errors are wrong), so those services are dead weight: they are the
- * difference between a 4.3 MB bundle and a 3.0 MB one, and between a 337 KB
- * stylesheet and a 75 KB one.
+ * `editor.main` is Monaco's own standalone-editor entry: the API plus its 59
+ * contribution modules (find, folding, word navigation, sorting, suggest,
+ * bracket matching, …) and the Monarch grammars for every language it knows.
  *
- * `basic-languages` is what remains, and it is what actually matters here:
- * the Monarch grammars behind syntax highlighting for every language this
- * plugin claims.
+ * An earlier revision imported `editor.api` alone to save ~1.3 MB. That is
+ * the API surface *without* the contributions, so the editor still opened and
+ * still typed — while find, option+arrow word navigation, and the folding
+ * commands silently did not exist. Contributions are the editor; only the
+ * language *services* (completion and type checking for CSS, HTML, JSON, and
+ * TypeScript) are optional here, and this entry does not pull them in: the
+ * plugin has no language server, and Monaco's TypeScript checker sees only
+ * the open file, so its "cannot find module" errors would be wrong.
  */
 export * as monaco from "monaco-editor/editor/editor.api.js";
-import "monaco-editor/basic-languages/monaco.contribution.js";
+import "monaco-editor/editor/editor.main.js";
