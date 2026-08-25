@@ -70,6 +70,16 @@ export const rpcContract = defineRpcContract({
         kind: z.literal("text"),
         content: z.string(),
         sha256: z.string(),
+        /**
+         * Where the file actually lives, and its path within the root
+         * `read`/`write` confine to. The frontend has neither: BB hands the
+         * opener a path relative to the workspace (or an absolute one, for a
+         * host file), and resolving it needs the environment lookup that only
+         * happens here. Returned with the content so the "copy path" palette
+         * commands need no second round trip.
+         */
+        absolutePath: z.string(),
+        relativePath: z.string(),
       }),
       // Not an error: binary and oversized files are ordinary things to click
       // on. The frontend renders BB's own preview for these instead.
@@ -251,6 +261,16 @@ export default async function plugin(bb: BbPluginApi) {
     };
   }
 
+  /**
+   * `root`-relative form of `target`. The daemon may hand back a Windows
+   * root, so pick the path flavour from the root rather than the host we
+   * happen to be running on.
+   */
+  function relativeTo(root: string, target: string): string {
+    const api = path.win32.isAbsolute(root) ? path.win32 : path.posix;
+    return api.relative(root, target) || api.basename(target);
+  }
+
   bb.rpc.register(rpcContract, {
     assets: () => assets(),
 
@@ -274,6 +294,12 @@ export default async function plugin(bb: BbPluginApi) {
         kind: "text" as const,
         content: file.content,
         sha256: file.sha256,
+        absolutePath: target.path,
+        // Same rooting as `tree`, so the two agree on what "relative" means:
+        // the worktree for a workspace file, the thread's storage directory,
+        // and — for a bare host path — the file's own directory, which leaves
+        // just the filename.
+        relativePath: relativeTo(target.rootPath, target.path),
       };
     },
 

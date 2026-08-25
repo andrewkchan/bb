@@ -23,6 +23,13 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { FileToolbar, type SaveIndicator } from "./components/FileToolbar.js";
 import { FileTreePanel } from "./components/FileTreePanel.js";
 import type { FlatEntry } from "./lib/file-tree.js";
+import {
+  EDITOR_COMMANDS,
+  forgetEditor,
+  isCommandAvailable,
+  markEditorActive,
+  runEditorCommand,
+} from "./lib/editor-commands.js";
 
 type SaveState =
   | { kind: "clean" }
@@ -50,7 +57,7 @@ function useMonacoTheme(): "vs-dark" | "vs" {
 function MonacoFileOpener({
   path,
   source,
-  experimental_Original: Original,
+  Original,
 }: PluginFileOpenerProps) {
   const rpc = useRpc<typeof rpcContract>();
   const theme = useMonacoTheme();
@@ -313,6 +320,17 @@ function MonacoFileOpener({
           overflowWidgetsDomNode: overflowWidgetsNode(),
         });
         editorRef.current = editor;
+        // Publish to the quick-palette commands, which have no other route to
+        // a file tab. Creating counts as becoming active — the tab the user
+        // just opened is the one they mean — and focus keeps it current
+        // afterwards as they move between tabs and panes.
+        const active = {
+          editor,
+          absolutePath: file.absolutePath,
+          relativePath: file.relativePath,
+        };
+        markEditorActive(active);
+        editor.onDidFocusEditorWidget(() => markEditorActive(active));
         setStatus({ kind: "ready" });
 
         editor.onDidChangeModelContent(() => {
@@ -336,6 +354,7 @@ function MonacoFileOpener({
 
     return () => {
       disposed = true;
+      if (editorRef.current) forgetEditor(editorRef.current);
       editorRef.current?.getModel()?.dispose();
       editorRef.current?.dispose();
       editorRef.current = null;
@@ -532,4 +551,16 @@ export default definePluginApp((app) => {
     extensions: CLAIMED_EXTENSIONS,
     component: MonacoFileOpener,
   });
+
+  // Folding and sorting are Monaco's, not ours — the palette rows only give
+  // them a name the user can type, since BB owns the editor's keybindings
+  // and its own chords reach the palette first.
+  for (const command of EDITOR_COMMANDS) {
+    app.slots.commandPaletteAction({
+      id: command.id,
+      title: command.title,
+      isAvailable: () => isCommandAvailable(command),
+      run: () => runEditorCommand(command),
+    });
+  }
 });
