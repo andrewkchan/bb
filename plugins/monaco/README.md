@@ -35,9 +35,12 @@ pnpm exec turbo run typecheck test --filter=bb-plugin-monaco
 ```
 
 `scripts/stage-assets.mjs` builds the Monaco bundle the editor loads, into
-`dist/monaco` — packaging copies only a builtin's `dist/`, and
-`apps/server/scripts/copy-builtin-plugins.ts` runs the script. Build it
-directly with `pnpm --filter bb-plugin-monaco build:monaco`.
+`dist/monaco`. Packaging runs it (`apps/server/scripts/copy-builtin-plugins.ts`),
+since only a builtin's `dist/` ships. A source checkout never runs that path —
+the dev server loads builtins straight from `plugins/<name>` — so the plugin
+builds the bundle itself the first time a file is opened, which makes that one
+open a few seconds slow. `pnpm --filter bb-plugin-monaco build:monaco` does it
+up front.
 
 Monaco is built rather than bundled into `app.js` because `bb plugin build`
 emits one file with no code splitting: Monaco would parse at app boot for

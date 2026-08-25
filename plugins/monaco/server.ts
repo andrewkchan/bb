@@ -121,31 +121,53 @@ export const rpcContract = defineRpcContract({
 });
 
 /**
- * The directory holding the Monaco bundle this plugin serves.
+ * The directory holding the Monaco bundle this plugin serves, building it
+ * first if it is not there.
  *
- * `scripts/stage-assets.mjs` builds it into `dist/monaco`, which is where a
- * released BB finds it: packaging copies only a builtin's `dist/` and
- * `skills/` (`apps/server/scripts/copy-builtin-plugins.ts`).
+ * `scripts/stage-assets.mjs` builds it into `dist/monaco`. Packaging runs
+ * that script (`apps/server/scripts/copy-builtin-plugins.ts`), so a released
+ * BB always finds it already built — but a source checkout never runs it: the
+ * dev server loads builtins straight from `plugins/<name>` and rebuilds only
+ * `dist/app.js` on demand. Without the fallback below, `pnpm dev` on a fresh
+ * clone would load this plugin into an error state.
  *
  * The two candidates are the two layouts this file runs under. Packaged, the
  * server bundle sits at `dist/server.js` with `dist/monaco` beside it; from
  * source, `server.ts` sits at the plugin root with `dist/monaco` below it.
  */
-function resolveMonacoBundleDir(): string {
+async function ensureMonacoBundleDir(
+  log: (message: string) => void,
+): Promise<string> {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  for (const candidate of [
+  const candidates = [
     path.join(moduleDir, "monaco"),
     path.join(moduleDir, "dist", "monaco"),
-  ]) {
-    if (existsSync(path.join(candidate, "editor.js"))) return candidate;
-  }
-  throw new Error(
-    "the Monaco bundle is missing; run `pnpm --filter bb-plugin-monaco build:monaco`",
+  ];
+  const built = candidates.find((candidate) =>
+    existsSync(path.join(candidate, "editor.js")),
   );
+  if (built !== undefined) return built;
+
+  // Building takes a few seconds, so say why the first file open is slow.
+  log("Monaco bundle missing; building it (first run in a source checkout)");
+  // A computed specifier, so the plugin's own bundler leaves it alone rather
+  // than trying to inline a build script into the server bundle. Importing it
+  // runs it — the same contract packaging relies on.
+  const script = new URL("./scripts/stage-assets.mjs", import.meta.url).href;
+  await import(script);
+
+  const staged = candidates.find((candidate) =>
+    existsSync(path.join(candidate, "editor.js")),
+  );
+  if (staged === undefined) {
+    throw new Error(
+      "could not build the Monaco bundle; run `pnpm --filter bb-plugin-monaco build:monaco`",
+    );
+  }
+  return staged;
 }
 
 export default async function plugin(bb: BbPluginApi) {
-  const bundleDir = resolveMonacoBundleDir();
 
   let assetLease: { baseUrl: string; expiresAtMs: number } | null = null;
 
@@ -161,6 +183,9 @@ export default async function plugin(bb: BbPluginApi) {
       assetLease === null ||
       assetLease.expiresAtMs - now < ASSET_LEASE_REFRESH_MARGIN_MS
     ) {
+      const bundleDir = await ensureMonacoBundleDir((message) =>
+        bb.log.info(message),
+      );
       // No hostId: the bundle is part of the plugin, on the server.
       assetLease = await bb.sdk.files.createPreview({
         rootPath: bundleDir,
@@ -345,5 +370,4 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
 
-  bb.log.info(`serving Monaco from ${bundleDir}`);
 }
