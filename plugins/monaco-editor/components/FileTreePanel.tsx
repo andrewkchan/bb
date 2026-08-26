@@ -25,6 +25,12 @@ export interface FileTreePanelProps {
   truncated: boolean;
   /** The file currently in the editor, revealed and highlighted. */
   activePath: string;
+  /**
+   * The editor's own background, so the tree reads as part of the same
+   * surface as the code rather than as BB chrome laid over it. Null until the
+   * code theme resolves, which falls back to BB's recessed surface token.
+   */
+  background: string | null;
   onOpenFile: (path: string) => void;
   onClose: () => void;
 }
@@ -32,6 +38,7 @@ export interface FileTreePanelProps {
 const INDENT_PER_LEVEL_PX = 12;
 
 export function FileTreePanel({
+  background,
   entries,
   root,
   isLoading,
@@ -173,10 +180,24 @@ export function FileTreePanel({
     // separate the tree from the file bar beneath it.
     <div
       ref={panelRef}
-      style={{ height }}
-      className="flex shrink-0 flex-col bg-surface-recessed"
+      style={{
+        height,
+        // Rows and the filter row are transparent, so this one declaration
+        // carries the whole panel. The hover and active tints over it are
+        // translucent BB tokens, which composite onto it correctly.
+        ...(background === null ? {} : { backgroundColor: background }),
+      }}
+      className={cn(
+        "flex shrink-0 flex-col",
+        background === null && "bg-surface-recessed",
+      )}
     >
-      <div className="flex shrink-0 items-center gap-1.5 px-3 py-1.5">
+      {/*
+        The tree's own bar, on the same surface token as the file bar below
+        it: the two stack, and reading as one strip of chrome is what keeps
+        the tree's background from looking like a third surface.
+      */}
+      <div className="flex h-9 shrink-0 items-center gap-1.5 bg-surface-raised px-4">
         <input
           type="text"
           value={query}
@@ -193,7 +214,10 @@ export function FileTreePanel({
           aria-label="Filter files"
           spellCheck={false}
           className={cn(
-            "h-6 min-w-0 flex-1 rounded-sm bg-background px-2 text-sm text-foreground",
+            // A translucent inset rather than an app surface token: the panel
+            // now sits on the editor's background, and an opaque field on it
+            // would be a second, unrelated surface.
+            "h-6 min-w-0 flex-1 rounded-sm bg-state-hover px-2 text-sm text-foreground",
             "placeholder:text-muted-foreground",
             "focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
           )}
