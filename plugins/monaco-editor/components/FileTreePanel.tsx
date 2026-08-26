@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ancestorsOf,
   buildTree,
@@ -7,6 +7,11 @@ import {
   type TreeNode,
 } from "../lib/file-tree.js";
 import { toast } from "sonner";
+import {
+  clampTreeHeight,
+  readStoredTreeHeight,
+  storeTreeHeight,
+} from "../lib/file-tree-height.js";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -40,6 +45,61 @@ export function FileTreePanel({
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const activeRowRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  // Seeded from storage so a resize survives hiding and reshowing the panel.
+  const [height, setHeight] = useState(readStoredTreeHeight);
+  const heightRef = useRef(height);
+  heightRef.current = height;
+  // The height the user asked for, which is not always the one on screen: a
+  // pane too short to honour it renders the clamped height and restores this
+  // one when the pane grows again.
+  const requestedHeightRef = useRef(height);
+  // The height the drag started from, so the panel tracks the total pointer
+  // delta. Accumulating per move event instead would drift: every move the
+  // clamp absorbs would be lost, and dragging back would not return the seam
+  // to the pointer.
+  const dragStartHeightRef = useRef<number | null>(null);
+
+  /** The space the tree and the editor share. */
+  const availableHeight = (): number =>
+    panelRef.current?.parentElement?.clientHeight ?? window.innerHeight;
+
+  const applyHeight = (requested: number) => {
+    requestedHeightRef.current = requested;
+    setHeight(clampTreeHeight(requested, availableHeight()));
+  };
+
+  const startResize = () => {
+    dragStartHeightRef.current = heightRef.current;
+  };
+
+  const resizeBy = (deltaY: number) => {
+    applyHeight((dragStartHeightRef.current ?? heightRef.current) + deltaY);
+  };
+
+  const commitHeight = () => {
+    dragStartHeightRef.current = null;
+    storeTreeHeight(heightRef.current);
+  };
+
+  // A stored height can be taller than the pane the panel opens in — a short
+  // window, or a secondary panel split small — and the pane can change size
+  // under it. Re-fit on both rather than letting the tree take the surface.
+  useLayoutEffect(() => {
+    const parent = panelRef.current?.parentElement;
+    if (parent === null || parent === undefined) return;
+    const fit = () => {
+      const next = clampTreeHeight(
+        requestedHeightRef.current,
+        parent.clientHeight,
+      );
+      if (next !== heightRef.current) setHeight(next);
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(parent);
+    return () => observer.disconnect();
+  }, []);
 
   const openMenu = (event: React.MouseEvent, node: TreeNode) => {
     event.preventDefault();
@@ -111,7 +171,11 @@ export function FileTreePanel({
   return (
     // Sits above the toolbar, so the divider goes on the bottom edge to
     // separate the tree from the file bar beneath it.
-    <div className="flex max-h-64 shrink-0 flex-col border-b border-border bg-surface-recessed">
+    <div
+      ref={panelRef}
+      style={{ height }}
+      className="flex shrink-0 flex-col bg-surface-recessed"
+    >
       <div className="flex shrink-0 items-center gap-1.5 px-3 py-1.5">
         <input
           type="text"
@@ -185,9 +249,99 @@ export function FileTreePanel({
         ) : null}
       </div>
       <ContextMenu state={menu} onClose={() => setMenu(null)} />
+      <ResizeHandle
+        onResize={resizeBy}
+        onResizeEnd={commitHeight}
+        onResizeStart={startResize}
+      />
     </div>
   );
 }
+
+/**
+ * The draggable seam between the tree and the editor, in the same idiom as
+ * BB's own pane dividers: a hairline that is the border, plus a taller
+ * transparent hit target straddling it so the pointer does not have to find
+ * one pixel.
+ */
+function ResizeHandle({
+  onResize,
+  onResizeEnd,
+  onResizeStart,
+}: {
+  onResize: (deltaY: number) => void;
+  onResizeEnd: () => void;
+  onResizeStart: () => void;
+}) {
+  const dividerRef = useRef<HTMLDivElement | null>(null);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    // Only the primary button drags; a right-click here opens the app menu.
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const target = event.currentTarget;
+    const pointerId = event.pointerId;
+    const startY = event.clientY;
+    const divider = dividerRef.current;
+    if (divider !== null) divider.dataset.dragging = "true";
+    onResizeStart();
+    // Capture on the hit target so the drag survives the pointer leaving it —
+    // which it does immediately, since the seam moves out from under it.
+    target.setPointerCapture(pointerId);
+
+    const move = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      onResize(moveEvent.clientY - startY);
+    };
+    const finish = (finishEvent: PointerEvent) => {
+      if (finishEvent.pointerId !== pointerId) return;
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", finish);
+      target.removeEventListener("pointercancel", finish);
+      if (target.hasPointerCapture(pointerId)) {
+        target.releasePointerCapture(pointerId);
+      }
+      if (divider !== null) delete divider.dataset.dragging;
+      onResizeEnd();
+    };
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", finish);
+    target.addEventListener("pointercancel", finish);
+  };
+
+  return (
+    <div
+      ref={dividerRef}
+      role="separator"
+      aria-label="Resize the file tree"
+      aria-orientation="horizontal"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        // The keyboard path a pointer-only divider owes: same clamping, one
+        // row at a time, so the tree is reachable without a pointer.
+        if (event.key === "ArrowUp") onResize(-KEYBOARD_RESIZE_STEP_PX);
+        else if (event.key === "ArrowDown") onResize(KEYBOARD_RESIZE_STEP_PX);
+        else return;
+        event.preventDefault();
+        onResizeEnd();
+      }}
+      className={cn(
+        "relative z-10 h-px shrink-0 cursor-row-resize bg-border transition-colors",
+        "hover:bg-ring/40 data-[dragging]:bg-ring/40",
+        "focus-visible:bg-ring focus-visible:outline-none",
+      )}
+    >
+      <div
+        aria-hidden
+        onPointerDown={handlePointerDown}
+        className="absolute -top-1.5 left-0 h-3 w-full cursor-row-resize touch-none bg-transparent"
+      />
+    </div>
+  );
+}
+
+/** One row of the tree, so a keyboard resize moves by something meaningful. */
+const KEYBOARD_RESIZE_STEP_PX = 24;
 
 /** Clipboard write with the same toast treatment as the toolbar's path copy. */
 function copy(text: string, successMessage: string): void {
