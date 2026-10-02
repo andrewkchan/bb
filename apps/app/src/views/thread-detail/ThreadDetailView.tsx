@@ -949,6 +949,7 @@ function ThreadDetailViewInternal(
     [thread, threadEnvironmentHost],
   );
   const forkThreadFromMessage = useForkThreadFromMessage({
+    navigateInPane,
     sourceThread: thread ?? null,
   });
   const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(
